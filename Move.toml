@@ -8,9 +8,11 @@ AptosStdlib = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "
 
 # [dependencies.AptosFramework]
 # local = './aptos-core/aptos-move/framework/aptos-framework/'
+# AptosFramework = { git = "https://github.com/aptos-labs/aptos-framework.git", subdir = "aptos-framework", rev = "mainnet" }
 
 # [dependencies.AptosStdlib]
 # local = './aptos-core/aptos-move/framework/aptos-stdlib/'
+
 
 [addresses]
 pancake_cake_token = "6b872ac0b07f8646a1f3a1d262028df3e9e3e7a6e1fdd811a8a9f2c3a0739d8d"

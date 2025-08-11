@@ -1,2 +1,85 @@
 .aptos/
 build/
+import pandas as pd
+import yfinance as yf
+import ta
+
+# ---------------------------
+# PARAMETERS
+# ---------------------------
+ticker = "RELIANCE.NS"       # Change to your stock symbol
+timeframe = "15m"
+period = "60d"               # Past 60 days to get enough candles
+stop_loss_pct = 0.05
+take_profit_pct = 0.07
+
+# ---------------------------
+# DOWNLOAD DATA
+# ---------------------------
+df = yf.download(ticker, interval=timeframe, period=period)
+df.dropna(inplace=True)
+
+# ---------------------------
+# INDICATORS
+# ---------------------------
+df["MA21"] = df["Close"].rolling(window=21).mean()
+df["MA50"] = df["Close"].rolling(window=50).mean()
+df["RSI"] = ta.momentum.RSIIndicator(df["Close"], window=14).rsi()
+df["ADX"] = ta.trend.ADXIndicator(df["High"], df["Low"], df["Close"], window=14).adx()
+
+# ---------------------------
+# DETECT HAMMER PATTERN
+# ---------------------------
+def is_hammer(row):
+    body = abs(row["Close"] - row["Open"])
+    candle_range = row["High"] - row["Low"]
+    lower_shadow = min(row["Open"], row["Close"]) - row["Low"]
+    upper_shadow = row["High"] - max(row["Open"], row["Close"])
+    return (lower_shadow >= 2 * body) and (upper_shadow <= body)
+
+df["Hammer"] = df.apply(is_hammer, axis=1)
+
+# ---------------------------
+# ENTRY CONDITIONS
+# ---------------------------
+df["Signal"] = False
+
+for i in range(1, len(df)):
+    # Check hammer at important support — here we approximate by previous swing low
+    support_level = df["Low"].rolling(window=20).min().shift(1)
+   
+    if (
+        df["Hammer"].iloc[i-1] and                                     # Previous candle was Hammer
+        df["Low"].iloc[i-1] <= support_level.iloc[i-1] * 1.005 and      # Near support
+        df["Close"].iloc[i] > df["Close"].iloc[i-1] and                 # Bullish follow-up candle
+        df["RSI"].iloc[i] == 62 and                                     # RSI exactly 62
+        df["MA21"].iloc[i] > df["MA50"].iloc[i] and                     # MA21 above MA50
+        df["Close"].iloc[i] > df["MA21"].iloc[i] and                    # Price above MA21
+        df["ADX"].iloc[i] > 40                                          # ADX condition
+    ):
+        df.at[df.index[i], "Signal"] = True
+
+# ---------------------------
+# BACKTEST EXIT CONDITIONS
+# ---------------------------
+df["Position"] = 0
+in_trade = False
+entry_price = None
+
+for i in range(len(df)):
+    if df["Signal"].iloc[i] and not in_trade:
+        df.at[df.index[i], "Position"] = 1
+        entry_price = df["Close"].iloc[i]
+        in_trade = True
+    elif in_trade:
+        price = df["Close"].iloc[i]
+        if price >= entry_price * (1 + take_profit_pct) or price <= entry_price * (1 - stop_loss_pct):
+            in_trade = False  # Exit trade
+        else:
+            df.at[df.index[i], "Position"] = 1
+
+# ---------------------------
+# OUTPUT SIGNALS
+# ---------------------------
+signals = df[df["Signal"]]
+print("Trade signals:\n", signals[["Close", "RSI", "ADX", "MA21", "MA50"]])
